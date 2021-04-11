@@ -214,6 +214,11 @@ impl<USB: UsbPeripheral> usb_device::bus::UsbBus for UsbBus<USB> {
                         if v.setup().bit_is_set() {
                             ep_setup |= bit;
                         }
+
+                        interrupt::free(|cs| {
+                            ep.clear_ctr_rx(cs);
+                        });
+                        ep.rx_rdy.store(true, core::sync::atomic::Ordering::Relaxed);
                     }
 
                     if v.ctr_tx().bit_is_set() {
@@ -263,7 +268,10 @@ impl<USB: UsbPeripheral> usb_device::bus::UsbBus for UsbBus<USB> {
             let ep = &self.endpoints[ep_addr.index()];
 
             match (stalled, ep_addr.direction()) {
-                (true, UsbDirection::In) => ep.set_stat_tx(cs, EndpointStatus::Stall),
+                (true, UsbDirection::In) => {
+                    ep.set_stat_tx(cs, EndpointStatus::Nak);
+                    //++ ep.set_stat_tx(cs, EndpointStatus::Stall);
+                }
                 (true, UsbDirection::Out) => ep.set_stat_rx(cs, EndpointStatus::Stall),
                 (false, UsbDirection::In) => ep.set_stat_tx(cs, EndpointStatus::Nak),
                 (false, UsbDirection::Out) => ep.set_stat_rx(cs, EndpointStatus::Valid),

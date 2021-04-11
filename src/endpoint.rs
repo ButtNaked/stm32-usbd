@@ -21,6 +21,7 @@ pub struct Endpoint<USB> {
     in_buf: Option<Mutex<EndpointBuffer<USB>>>,
     ep_type: Option<EndpointType>,
     index: u8,
+    pub(crate) rx_rdy: core::sync::atomic::AtomicBool,
     _marker: PhantomData<USB>,
 }
 
@@ -51,6 +52,7 @@ impl<USB: UsbPeripheral> Endpoint<USB> {
             in_buf: None,
             ep_type: None,
             index,
+            rx_rdy: core::sync::atomic::AtomicBool::new(false),
             _marker: PhantomData,
         }
     }
@@ -167,11 +169,13 @@ impl<USB: UsbPeripheral> Endpoint<USB> {
 
             let status: EndpointStatus = reg_v.stat_rx().bits().into();
 
-            if status == EndpointStatus::Disabled || !reg_v.ctr_rx().bit_is_set() {
+            if status == EndpointStatus::Disabled || !self.rx_rdy.load(core::sync::atomic::Ordering::Relaxed) {
+                //|| !reg_v.ctr_rx().bit_is_set() {
                 return Err(UsbError::WouldBlock);
             }
 
-            self.clear_ctr_rx(cs);
+            self.rx_rdy.store(false, core::sync::atomic::Ordering::Relaxed);
+            //self.clear_ctr_rx(cs);
 
             let count = (self.descr().count_rx().get() & 0x3ff) as usize;
             if count > buf.len() {
